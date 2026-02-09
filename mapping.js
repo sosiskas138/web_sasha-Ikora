@@ -19,7 +19,11 @@
  * 3. "ТелефонН"     → PHONE
  */
 const leadMapping = {
-  // Поле 1: Комментарий — ТОЛЬКО факты о клиенте
+  STATUS_ID: {
+    source: 'static',
+    value: 'UC_E5DGC8' // ← "ЛИДЫ ИИ"
+  },
+  
   COMMENTS: {
     source: 'multiple',
     transform: (value, data) => {
