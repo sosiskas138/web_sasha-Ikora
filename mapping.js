@@ -19,117 +19,12 @@
  * 3. "ТелефонН"     → PHONE
  */
 const leadMapping = {
-  // Поле 1: Комментарий
+  // Поле 1: Комментарий — ТОЛЬКО факты о клиенте
   COMMENTS: {
-    source: 'multiple',  // Специальное значение - собираем из нескольких полей
+    source: 'multiple',
     transform: (value, data) => {
-      const comments = [];
-      const agreements = data.call?.agreements || {};
-      const call = data.call || {};
-
-      // Договоренности
-      if (agreements.agreements) {
-        comments.push(`Договоренности: ${agreements.agreements}`);
-      }
-
-      // Факты о клиенте
-      if (agreements.client_facts) {
-        comments.push(`Факты о клиенте: ${agreements.client_facts}`);
-      }
-
-      // SMS текст
-      if (agreements.smsText) {
-        comments.push(`SMS текст: ${agreements.smsText}`);
-      }
-
-      // Длительность звонка
-      if (call.duration) {
-        const durationMinutes = Math.floor(call.duration / 60000);
-        const durationSeconds = Math.floor((call.duration % 60000) / 1000);
-        comments.push(`Длительность звонка: ${durationMinutes} мин ${durationSeconds} сек`);
-      }
-
-      // Время начала звонка
-      if (call.startedAt) {
-        comments.push(`Звонок начат: ${new Date(call.startedAt).toLocaleString('ru-RU')}`);
-      }
-
-      // Время окончания звонка
-      if (call.endedAt) {
-        comments.push(`Звонок завершен: ${new Date(call.endedAt).toLocaleString('ru-RU')}`);
-      }
-
-      // Время договоренности
-      if (agreements.agreements_time) {
-        comments.push(`Время договоренности: ${agreements.agreements_time}`);
-      }
-
-      // Направление лида
-      if (agreements.lead_destination) {
-        comments.push(`Направление лида: ${agreements.lead_destination}`);
-      }
-
-      // Статус
-      if (agreements.status) {
-        comments.push(`Статус: ${agreements.status}`);
-      }
-
-      // Регион (из dadataPhoneInfo)
-      if (data.contact?.dadataPhoneInfo?.region) {
-        comments.push(`Регион: ${data.contact.dadataPhoneInfo.region}`);
-      }
-
-      // Оператор (из dadataPhoneInfo)
-      if (data.contact?.dadataPhoneInfo?.provider) {
-        comments.push(`Оператор: ${data.contact.dadataPhoneInfo.provider}`);
-      }
-
-      // Часовой пояс (из dadataPhoneInfo)
-      if (data.contact?.dadataPhoneInfo?.timezone) {
-        comments.push(`Часовой пояс: ${data.contact.dadataPhoneInfo.timezone}`);
-      }
-
-      // Колл-лист
-      if (data.callList?.name) {
-        comments.push(`Колл-лист: ${data.callList.name}`);
-      }
-
-      // Теги контакта
-      if (data.contact?.tags && data.contact.tags.length > 0) {
-        comments.push(`Теги: ${data.contact.tags.join(', ')}`);
-      }
-
-      // Дополнительная информация
-      const additionalInfo = [];
-      if (data.contact?.additionalFields?.website) {
-        additionalInfo.push(`Сайт: ${data.contact.additionalFields.website}`);
-      }
-      if (data.contact?.additionalFields?.page) {
-        additionalInfo.push(`Страница: ${data.contact.additionalFields.page}`);
-      }
-      if (data.contact?.additionalFields?.ip) {
-        additionalInfo.push(`IP: ${data.contact.additionalFields.ip}`);
-      }
-      if (additionalInfo.length > 0) {
-        comments.push(`\nДополнительная информация:\n${additionalInfo.join('\n')}`);
-      }
-
-      // Тип звонка
-      if (call.type) {
-        comments.push(`Тип звонка: ${call.type === 'outgoing' ? 'Исходящий' : 'Входящий'}`);
-      }
-
-      // Статус звонка
-      if (call.status) {
-        comments.push(`Статус звонка: ${call.status}`);
-      }
-
-      // Причина завершения
-      if (call.hangupReason) {
-        comments.push(`Причина завершения: ${call.hangupReason}`);
-      }
-
-      return comments.join('\n\n');
+      const facts = data.call?.agreements?.client_facts;
+      return facts || null;
     }
   },
 
