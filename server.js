@@ -5,10 +5,7 @@ const { leadMapping, applyMapping } = require('./mapping');
 require('dotenv').config();
 
 const app = express();
-// Порт внутри контейнера/процесса:
-// - в приоритете DOCKERPORT
-// - затем PORT
-// - по умолчанию 3333
+
 const PORT = process.env.DOCKERPORT || process.env.PORT || 3333;
 
 // Middleware для получения сырого тела запроса ТОЛЬКО для /webhook (нужно для проверки подписи)
@@ -111,6 +108,38 @@ async function createLeadInBitrix(data) {
 }
 
 /**
+ * Функция для отправки контактов в Sasha Platform
+ * @param {Array} contacts - Массив контактов в формате [{"phone": "79001234567"}, ...]
+ * @returns {Promise<Object>} - Результат отправки контактов
+ */
+async function sendContactsToSasha(contacts) {
+  const sashaWebhookUrl = process.env.SASHA_CONTACTS_WEBHOOK_URL || 
+    'https://platform.trysasha.ru/api/upload-contacts-integrations/webhook/afd4501c-ccaf-4db2-ad30-c7b1f0ffe0ff';
+  
+  try {
+    const response = await axios.post(
+      sashaWebhookUrl,
+      contacts,
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000 // 30 секунд таймаут
+      }
+    );
+    
+    return {
+      success: true,
+      data: response.data,
+      status: response.status
+    };
+  } catch (error) {
+    console.error('Ошибка при отправке контактов в Sasha Platform:', error.response?.data || error.message);
+    throw new Error(`Ошибка при отправке контактов в Sasha Platform: ${error.response?.data?.message || error.message}`);
+  }
+}
+
+/**
  * Обработчик вебхука от Sasha AI
  */
 app.post('/webhook', async (req, res) => {
@@ -164,6 +193,106 @@ app.post('/webhook', async (req, res) => {
   } catch (error) {
     console.error('Ошибка при обработке запроса:', error);
     res.status(500).json({
+      success: false,
+      error: error.message || 'Внутренняя ошибка сервера'
+    });
+  }
+});
+
+/**
+ * Эндпоинт для приема контактов
+ * 
+ * Использование:
+ * - POST /contact
+ * - Content-Type: application/json
+ * - Authorization: Bearer <CONTACT_SECRET_TOKEN> или X-Auth-Token: <CONTACT_SECRET_TOKEN>
+ * - Body: JSON массив контактов [{"phone": "79001234567"}, ...]
+ */
+app.post('/contact', async (req, res) => {
+  try {
+    // Проверка secret token (опциональная)
+    // Токен можно передать:
+    // 1. В query параметре URL: /contact?token=xxx (для случаев, когда нельзя редактировать заголовки)
+    // 2. В заголовке Authorization: Bearer xxx
+    // 3. В заголовке X-Auth-Token: xxx
+    const tokenFromQuery = req.query.token;
+    const authHeader = req.headers.authorization;
+    const tokenHeader = req.headers['x-auth-token'];
+    const providedToken = tokenFromQuery || 
+      (authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null) || 
+      tokenHeader;
+    const secretToken = process.env.CONTACT_SECRET_TOKEN;
+
+    // Если токен настроен, проверяем его
+    if (secretToken) {
+      if (!providedToken) {
+        return res.status(401).json({
+          success: false,
+          error: 'Отсутствует токен авторизации. Укажите токен в URL: /contact?token=xxx или в заголовке Authorization: Bearer <token>'
+        });
+      }
+
+      if (providedToken !== secretToken) {
+        return res.status(403).json({
+          success: false,
+          error: 'Неверный токен авторизации'
+        });
+      }
+    } else {
+      // Если токен не настроен, просто логируем предупреждение
+      console.warn('⚠️  CONTACT_SECRET_TOKEN не установлен. Запросы принимаются без проверки авторизации!');
+    }
+
+    // Валидация данных
+    const contacts = req.body;
+
+    if (!Array.isArray(contacts)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Данные должны быть массивом. Отправьте JSON массив: [{"phone": "79001234567"}, ...]'
+      });
+    }
+
+    if (contacts.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Массив контактов пуст'
+      });
+    }
+
+    // Валидация структуры каждого контакта
+    const invalidContacts = contacts.filter((contact, index) => {
+      return !contact || typeof contact !== 'object' || !contact.phone || typeof contact.phone !== 'string';
+    });
+
+    if (invalidContacts.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Некорректный формат контактов. Каждый контакт должен содержать поле "phone" (строка)',
+        invalidCount: invalidContacts.length
+      });
+    }
+
+    // Логирование полученных контактов
+    console.log(`Получено контактов: ${contacts.length}`);
+    contacts.forEach((contact, index) => {
+      console.log(`  [${index + 1}] Телефон: ${contact.phone}`);
+    });
+
+    // Отправка контактов в Sasha Platform
+    const sashaResult = await sendContactsToSasha(contacts);
+    
+    console.log(`Контакты успешно отправлены в Sasha Platform. Статус: ${sashaResult.status}`);
+
+    return res.json({
+      success: true,
+      message: `Успешно получено и отправлено ${contacts.length} контакт(ов) в Sasha Platform`,
+      count: contacts.length,
+      sashaResponse: sashaResult.data
+    });
+  } catch (error) {
+    console.error('Ошибка при обработке контактов:', error);
+    return res.status(500).json({
       success: false,
       error: error.message || 'Внутренняя ошибка сервера'
     });
@@ -227,4 +356,12 @@ app.listen(PORT, () => {
   if (!process.env.BITRIX_WEBHOOK_URL) {
     console.warn('⚠️  ВНИМАНИЕ: BITRIX_WEBHOOK_URL не установлен. Отправка в Bitrix не будет работать!');
   }
+  
+  if (!process.env.CONTACT_SECRET_TOKEN) {
+    console.warn('⚠️  ВНИМАНИЕ: CONTACT_SECRET_TOKEN не установлен. Эндпоинт /contact принимает запросы без проверки авторизации!');
+  }
+  
+  const sashaWebhookUrl = process.env.SASHA_CONTACTS_WEBHOOK_URL || 
+    'https://platform.trysasha.ru/api/upload-contacts-integrations/webhook/afd4501c-ccaf-4db2-ad30-c7b1f0ffe0ff';
+  console.log('📤 Контакты будут отправляться');
 });
