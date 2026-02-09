@@ -3,7 +3,7 @@ services:
     build: .
     container_name: sasha-webhook-bitrix
     ports:
-      - "${PORT:-3333}:3333"
+      - "${PORT:-3333}:${DOCKERPORT:-3333}"
     env_file:
       - .env
     restart: unless-stopped

@@ -5,7 +5,11 @@ const { leadMapping, applyMapping } = require('./mapping');
 require('dotenv').config();
 
 const app = express();
-const PORT = process.env.PORT || 3333;
+// Порт внутри контейнера/процесса:
+// - в приоритете DOCKERPORT
+// - затем PORT
+// - по умолчанию 3333
+const PORT = process.env.DOCKERPORT || process.env.PORT || 3333;
 
 // Middleware для получения сырого тела запроса ТОЛЬКО для /webhook (нужно для проверки подписи)
 // Важно: это должно быть ДО express.json(), чтобы Express не пытался парсить JSON дважды
