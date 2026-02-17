@@ -27,8 +27,90 @@ const leadMapping = {
   COMMENTS: {
     source: 'multiple',
     transform: (value, data) => {
-      const facts = data.call?.agreements?.client_facts;
-      return facts || null;
+      const call = data.call || {};
+      const contact = data.contact || {};
+      const agreements = call.agreements || {};
+
+      // Форматирование длительности (миллисекунды → MM:SS)
+      const formatDuration = (ms) => {
+        if (ms == null) return '—';
+        const totalSec = Math.floor(ms / 1000);
+        const min = Math.floor(totalSec / 60);
+        const sec = totalSec % 60;
+        return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+      };
+
+      // Форматирование даты в DD.MM.YYYY HH:mm по МСК
+      const formatDateMsk = (dateStr) => {
+        if (!dateStr) return '—';
+        try {
+          const d = new Date(dateStr);
+          if (isNaN(d.getTime())) return '—';
+          // UTC+3 для МСК
+          const msk = new Date(d.getTime() + 3 * 60 * 60 * 1000);
+          const day = String(msk.getUTCDate()).padStart(2, '0');
+          const month = String(msk.getUTCMonth() + 1).padStart(2, '0');
+          const year = msk.getUTCFullYear();
+          const hours = String(msk.getUTCHours()).padStart(2, '0');
+          const min = String(msk.getUTCMinutes()).padStart(2, '0');
+          return `${day}.${month}.${year} ${hours}:${min} по МСК`;
+        } catch {
+          return dateStr;
+        }
+      };
+
+      // Форматирование agreements_time (2026-02-17 18:33:00 UTC → 17.02.2026 21:33 по МСК)
+      const formatAgreementsTime = (timeStr) => {
+        if (!timeStr) return '—';
+        try {
+          const normalized = timeStr.includes('Z') ? timeStr : timeStr.replace(' ', 'T') + 'Z';
+          const d = new Date(normalized);
+          if (isNaN(d.getTime())) return timeStr;
+          const msk = new Date(d.getTime() + 3 * 60 * 60 * 1000);
+          const day = String(msk.getUTCDate()).padStart(2, '0');
+          const month = String(msk.getUTCMonth() + 1).padStart(2, '0');
+          const year = msk.getUTCFullYear();
+          const hours = String(msk.getUTCHours()).padStart(2, '0');
+          const min = String(msk.getUTCMinutes()).padStart(2, '0');
+          return `${day}.${month}.${year} ${hours}:${min} по МСК`;
+        } catch {
+          return timeStr;
+        }
+      };
+
+      const clientName = agreements.client_name || '—';
+      const phone = contact.phone ? `+${contact.phone.replace(/\D/g, '')}` : '—';
+      const duration = formatDuration(call.duration);
+      const startedAt = formatDateMsk(call.startedAt);
+      const recordUrl = call.recordUrl || '—';
+      const agreementsText = agreements.agreements || '—';
+      const agreementsTime = formatAgreementsTime(agreements.agreements_time_local || agreements.agreements_time);
+      const region = contact.dadataPhoneInfo?.region || '—';
+      const tags = (contact.tags && contact.tags.length > 0) ? contact.tags.join(', ') : '—';
+      const clientFacts = agreements.client_facts || '—';
+      const hasAdditionalFields = contact.additionalFields && typeof contact.additionalFields === 'object' && Object.keys(contact.additionalFields).length > 0;
+      const additionalFields = hasAdditionalFields ? JSON.stringify(contact.additionalFields) : '—';
+      const smsText = agreements.smsText || '—';
+
+      return `Имя: ${clientName}
+Телефон: ${phone}
+Длительность звонка: ${duration}
+Время начала звонка: ${startedAt}
+Заинтересованность: —
+Запись звонка: ${recordUrl}
+
+Договоренности: ${agreementsText}
+Время договоренности: ${agreementsTime}
+Возможный регион: ${region}
+Теги: ${tags}
+
+О клиенте:
+${clientFacts}
+
+Доп. поля контакта: ${additionalFields}
+
+Закрывающее сообщение:
+${smsText}`;
     }
   },
 
