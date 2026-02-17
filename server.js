@@ -82,12 +82,32 @@ async function createLeadInBitrix(data) {
   const leadFields = applyMapping(data, leadMapping);
   console.log('✅ [DEBUG] Результат маппинга:', JSON.stringify(leadFields, null, 2));
   
+  // Проверяем, что есть хотя бы одно поле для создания лида
+  if (!leadFields || Object.keys(leadFields).length === 0) {
+    console.error('❌ [DEBUG] После маппинга не осталось ни одного поля!');
+    console.error('   Входные данные:', JSON.stringify(data, null, 2));
+    throw new Error('После маппинга не осталось полей для создания лида. Проверьте структуру входящих данных.');
+  }
+  
+  // Проверяем обязательные поля для Bitrix
+  const requiredFields = ['NAME', 'PHONE'];
+  const missingFields = requiredFields.filter(field => !leadFields[field] || 
+    (Array.isArray(leadFields[field]) && leadFields[field].length === 0) ||
+    (typeof leadFields[field] === 'string' && leadFields[field].trim() === ''));
+  
+  if (missingFields.length > 0) {
+    console.warn('⚠️  [DEBUG] Отсутствуют некоторые обязательные поля:', missingFields);
+    console.warn('   Доступные поля:', Object.keys(leadFields));
+  }
+  
   // Формируем данные для отправки в Bitrix
   const leadData = {
     fields: leadFields
   };
   
   console.log('📤 [DEBUG] Данные для отправки в Bitrix:', JSON.stringify(leadData, null, 2));
+  console.log('📊 [DEBUG] Количество полей:', Object.keys(leadFields).length);
+  console.log('📋 [DEBUG] Список полей:', Object.keys(leadFields).join(', '));
   
   // Отправка запроса в Bitrix
   try {
@@ -105,13 +125,37 @@ async function createLeadInBitrix(data) {
       {
         headers: {
           'Content-Type': 'application/json'
+        },
+        timeout: 30000, // 30 секунд таймаут
+        validateStatus: function (status) {
+          // Принимаем любые статусы для детальной обработки
+          return status >= 200 && status < 600;
         }
       }
     );
     
-    console.log('✅ [DEBUG] Успешный ответ от Bitrix:');
+    console.log('📡 [DEBUG] Запрос отправлен, получен ответ');
+    console.log('   HTTP Status:', response.status);
+    
+    console.log('✅ [DEBUG] Ответ получен от Bitrix:');
     console.log('   Status:', response.status);
     console.log('   Response data:', JSON.stringify(response.data, null, 2));
+    
+    // Проверяем, что Bitrix действительно создал лид
+    if (response.data.error) {
+      console.error('❌ [DEBUG] Bitrix вернул ошибку:');
+      console.error('   Error:', response.data.error);
+      console.error('   Error description:', response.data.error_description);
+      throw new Error(`Bitrix вернул ошибку: ${response.data.error} - ${response.data.error_description || ''}`);
+    }
+    
+    if (!response.data.result) {
+      console.error('❌ [DEBUG] Bitrix не вернул ID лида!');
+      console.error('   Response:', JSON.stringify(response.data, null, 2));
+      throw new Error('Bitrix не вернул ID созданного лида. Возможно, лид не был создан.');
+    }
+    
+    console.log('✅ [DEBUG] Лид успешно создан в Bitrix!');
     console.log('   Lead ID:', response.data.result);
     
     return {

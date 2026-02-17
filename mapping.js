@@ -36,7 +36,9 @@ const leadMapping = {
   NAME: {
     source: 'call.agreements.client_name',  // Имя клиента из договоренностей
     transform: (value) => {
-      return value ? value.trim() : '';
+      const trimmed = value ? value.trim() : '';
+      // Возвращаем null вместо пустой строки, чтобы Bitrix мог использовать значение по умолчанию
+      return trimmed || null;
     }
   },
 
@@ -104,6 +106,7 @@ function getValueByPath(obj, path) {
  */
 function applyMapping(webhookData, mapping) {
   const result = {};
+  const skippedFields = [];
   
   for (const [bitrixField, config] of Object.entries(mapping)) {
     try {
@@ -112,28 +115,46 @@ function applyMapping(webhookData, mapping) {
       if (config.source === 'static') {
         // Статическое значение
         value = config.value;
+        console.log(`   [MAPPING] ${bitrixField}: статическое значение = ${value}`);
       } else if (config.source === 'multiple') {
         // Специальная обработка для множественных источников
         value = config.transform ? config.transform(null, webhookData) : null;
+        console.log(`   [MAPPING] ${bitrixField}: множественный источник = ${value ? '✓' : '✗'}`);
       } else {
         // Получаем значение по пути
         const rawValue = getValueByPath(webhookData, config.source);
+        console.log(`   [MAPPING] ${bitrixField}: путь "${config.source}" = ${rawValue !== null ? JSON.stringify(rawValue) : 'null'}`);
         
         // Применяем преобразование, если есть
         if (config.transform) {
           value = config.transform(rawValue, webhookData);
+          console.log(`   [MAPPING] ${bitrixField}: после transform = ${value !== null ? JSON.stringify(value) : 'null'}`);
         } else {
           value = rawValue;
         }
       }
       
-      // Добавляем поле только если значение не null/undefined
-      if (value !== null && value !== undefined) {
+      // Добавляем поле только если значение не null/undefined и не пустая строка
+      if (value !== null && value !== undefined && value !== '') {
+        // Для массивов проверяем, что они не пустые
+        if (Array.isArray(value) && value.length === 0) {
+          skippedFields.push(`${bitrixField} (пустой массив)`);
+          continue;
+        }
         result[bitrixField] = value;
+        console.log(`   [MAPPING] ✓ ${bitrixField} добавлено в результат`);
+      } else {
+        skippedFields.push(`${bitrixField} (${value === null ? 'null' : value === undefined ? 'undefined' : 'пустая строка'})`);
+        console.log(`   [MAPPING] ✗ ${bitrixField} пропущено: ${value === null ? 'null' : value === undefined ? 'undefined' : 'пустая строка'}`);
       }
     } catch (error) {
-      console.warn(`Ошибка при обработке поля ${bitrixField}:`, error.message);
+      console.warn(`   [MAPPING] ❌ Ошибка при обработке поля ${bitrixField}:`, error.message);
+      skippedFields.push(`${bitrixField} (ошибка: ${error.message})`);
     }
+  }
+  
+  if (skippedFields.length > 0) {
+    console.log(`   [MAPPING] Пропущено полей: ${skippedFields.length}`, skippedFields);
   }
   
   return result;
