@@ -65,19 +65,29 @@ function verifyWebhookSignature(payload, signature, secret) {
  * @returns {Promise<Object>} - Результат создания лида в Bitrix
  */
 async function createLeadInBitrix(data) {
+  console.log('\n🔵 [DEBUG] Начало создания лида в Bitrix');
+  console.log('📥 [DEBUG] Входные данные:', JSON.stringify(data, null, 2));
+  
   const bitrixWebhookUrl = process.env.BITRIX_WEBHOOK_URL;
   
   if (!bitrixWebhookUrl) {
+    console.error('❌ [DEBUG] BITRIX_WEBHOOK_URL не установлен в переменных окружения');
     throw new Error('BITRIX_WEBHOOK_URL не установлен в переменных окружения');
   }
 
+  console.log('🔗 [DEBUG] Bitrix Webhook URL:', bitrixWebhookUrl);
+
   // Применяем маппинг для преобразования данных вебхука в поля Bitrix
+  console.log('🔄 [DEBUG] Применение маппинга...');
   const leadFields = applyMapping(data, leadMapping);
+  console.log('✅ [DEBUG] Результат маппинга:', JSON.stringify(leadFields, null, 2));
   
   // Формируем данные для отправки в Bitrix
   const leadData = {
     fields: leadFields
   };
+  
+  console.log('📤 [DEBUG] Данные для отправки в Bitrix:', JSON.stringify(leadData, null, 2));
   
   // Отправка запроса в Bitrix
   try {
@@ -85,6 +95,9 @@ async function createLeadInBitrix(data) {
     const url = bitrixWebhookUrl.endsWith('/') 
       ? `${bitrixWebhookUrl}crm.lead.add`
       : `${bitrixWebhookUrl}/crm.lead.add`;
+    
+    console.log('🌐 [DEBUG] Полный URL для запроса:', url);
+    console.log('📡 [DEBUG] Отправка POST запроса в Bitrix...');
     
     const response = await axios.post(
       url,
@@ -96,13 +109,36 @@ async function createLeadInBitrix(data) {
       }
     );
     
+    console.log('✅ [DEBUG] Успешный ответ от Bitrix:');
+    console.log('   Status:', response.status);
+    console.log('   Response data:', JSON.stringify(response.data, null, 2));
+    console.log('   Lead ID:', response.data.result);
+    
     return {
       success: true,
       leadId: response.data.result,
       data: response.data
     };
   } catch (error) {
-    console.error('Ошибка при создании лида в Bitrix:', error.response?.data || error.message);
+    console.error('❌ [DEBUG] Ошибка при создании лида в Bitrix:');
+    console.error('   Error message:', error.message);
+    console.error('   Error code:', error.code);
+    
+    if (error.response) {
+      console.error('   Response status:', error.response.status);
+      console.error('   Response headers:', JSON.stringify(error.response.headers, null, 2));
+      console.error('   Response data:', JSON.stringify(error.response.data, null, 2));
+    }
+    
+    if (error.request) {
+      console.error('   Request was made but no response received');
+      console.error('   Request config:', JSON.stringify({
+        url: error.config?.url,
+        method: error.config?.method,
+        data: error.config?.data
+      }, null, 2));
+    }
+    
     throw new Error(`Ошибка при создании лида в Bitrix: ${error.response?.data?.error_description || error.message}`);
   }
 }
@@ -143,30 +179,48 @@ async function sendContactsToSasha(contacts) {
  * Обработчик вебхука от Sasha AI
  */
 app.post('/webhook', async (req, res) => {
+  console.log('\n' + '='.repeat(80));
+  console.log('🔔 [WEBHOOK] Получен новый вебхук от Sasha AI');
+  console.log('='.repeat(80));
+  
   const signature = req.headers['x-webhook-signature'];
   const payload = req.body; // Теперь это строка благодаря express.text()
   const secret = process.env.WEBHOOK_SECRET;
   
+  console.log('📋 [WEBHOOK] Заголовки запроса:');
+  console.log('   X-Webhook-Signature:', signature ? '✓ присутствует' : '✗ отсутствует');
+  console.log('   Content-Type:', req.headers['content-type']);
+  console.log('   Content-Length:', req.headers['content-length']);
+  
   // Проверка наличия необходимых данных
   if (!signature) {
+    console.error('❌ [WEBHOOK] Отсутствует заголовок X-Webhook-Signature');
     return res.status(401).send('Отсутствует заголовок X-Webhook-Signature');
   }
   
   if (!secret) {
+    console.error('❌ [WEBHOOK] WEBHOOK_SECRET не настроен');
     return res.status(500).send('WEBHOOK_SECRET не настроен');
   }
   
   if (!payload) {
+    console.error('❌ [WEBHOOK] Тело запроса пустое');
     return res.status(400).send('Тело запроса пустое');
   }
   
-  
+  console.log('📦 [WEBHOOK] Размер payload:', payload.length, 'символов');
+  console.log('🔐 [WEBHOOK] Проверка подписи...');
 
   try {
     const data = JSON.parse(payload);
+    console.log('✅ [WEBHOOK] JSON успешно распарсен');
+    console.log('📊 [WEBHOOK] Структура данных:');
+    console.log('   - contact:', data.contact ? '✓ присутствует' : '✗ отсутствует');
+    console.log('   - call:', data.call ? '✓ присутствует' : '✗ отсутствует');
     
     // Валидация наличия данных
     if (!data || Object.keys(data).length === 0) {
+      console.error('❌ [WEBHOOK] Данные не предоставлены');
       return res.status(400).json({
         success: false,
         error: 'Данные не предоставлены. Отправьте JSON в теле запроса'
@@ -175,14 +229,29 @@ app.post('/webhook', async (req, res) => {
     
     // Валидация обязательных полей
     if (!data.contact || !data.call) {
+      console.error('❌ [WEBHOOK] Отсутствуют обязательные поля');
+      console.error('   contact:', data.contact ? '✓' : '✗');
+      console.error('   call:', data.call ? '✓' : '✗');
       return res.status(400).json({
         success: false,
         error: 'Отсутствуют обязательные поля: contact или call'
       });
     }
     
+    // Детальная информация о данных
+    console.log('📞 [WEBHOOK] Информация о контакте:');
+    console.log('   Phone:', data.contact?.phone || 'не указан');
+    console.log('📞 [WEBHOOK] Информация о звонке:');
+    console.log('   Client name:', data.call?.agreements?.client_name || 'не указано');
+    console.log('   Client facts:', data.call?.agreements?.client_facts ? '✓ присутствуют' : '✗ отсутствуют');
+    
     // Создание лида в Bitrix
+    console.log('🚀 [WEBHOOK] Начинаем создание лида в Bitrix...');
     const result = await createLeadInBitrix(data);
+    
+    console.log('✅ [WEBHOOK] Лид успешно создан!');
+    console.log('   Lead ID:', result.leadId);
+    console.log('='.repeat(80) + '\n');
     
     res.json({
       success: true,
@@ -191,7 +260,12 @@ app.post('/webhook', async (req, res) => {
       data: result.data
     });
   } catch (error) {
-    console.error('Ошибка при обработке запроса:', error);
+    console.error('\n❌ [WEBHOOK] Ошибка при обработке запроса:');
+    console.error('   Error type:', error.constructor.name);
+    console.error('   Error message:', error.message);
+    console.error('   Error stack:', error.stack);
+    console.log('='.repeat(80) + '\n');
+    
     res.status(500).json({
       success: false,
       error: error.message || 'Внутренняя ошибка сервера'
@@ -310,10 +384,16 @@ app.post('/contact', async (req, res) => {
  * Важно: endpoint не проверяет подпись и предназначен только для тестов.
  */
 app.post('/test/bitrix/lead', async (req, res) => {
+  console.log('\n' + '='.repeat(80));
+  console.log('🧪 [TEST] Тестовый запрос на создание лида');
+  console.log('='.repeat(80));
+  
   try {
     const data = req.body;
+    console.log('📥 [TEST] Полученные данные:', JSON.stringify(data, null, 2));
 
     if (!data || typeof data !== 'object') {
+      console.error('❌ [TEST] Данные не предоставлены');
       return res.status(400).json({
         success: false,
         error: 'Данные не предоставлены. Отправьте JSON в теле запроса'
@@ -322,13 +402,19 @@ app.post('/test/bitrix/lead', async (req, res) => {
 
     // Минимальная валидация как в /webhook
     if (!data.contact || !data.call) {
+      console.error('❌ [TEST] Отсутствуют обязательные поля');
       return res.status(400).json({
         success: false,
         error: 'Отсутствуют обязательные поля: contact или call'
       });
     }
 
+    console.log('🚀 [TEST] Начинаем создание лида в Bitrix...');
     const result = await createLeadInBitrix(data);
+
+    console.log('✅ [TEST] Тестовый лид успешно создан!');
+    console.log('   Lead ID:', result.leadId);
+    console.log('='.repeat(80) + '\n');
 
     return res.json({
       success: true,
@@ -337,7 +423,11 @@ app.post('/test/bitrix/lead', async (req, res) => {
       data: result.data
     });
   } catch (error) {
-    console.error('Ошибка при тестовой отправке в Bitrix:', error);
+    console.error('\n❌ [TEST] Ошибка при тестовой отправке в Bitrix:');
+    console.error('   Error message:', error.message);
+    console.error('   Error stack:', error.stack);
+    console.log('='.repeat(80) + '\n');
+    
     return res.status(500).json({
       success: false,
       error: error.message || 'Внутренняя ошибка сервера'
