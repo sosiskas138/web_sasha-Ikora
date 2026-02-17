@@ -6,7 +6,7 @@ require('dotenv').config();
 
 const app = express();
 
-const PORT = process.env.DOCKERPORT || process.env.PORT || 3333;
+const PORT = process.env.DOCKERPORT || process.env.PORT || 7777;
 
 // Middleware для получения сырого тела запроса ТОЛЬКО для /webhook (нужно для проверки подписи)
 // Важно: это должно быть ДО express.json(), чтобы Express не пытался парсить JSON дважды
@@ -195,33 +195,19 @@ app.post('/webhook', async (req, res) => {
   console.log('🔔 [WEBHOOK] Получен новый вебхук от Sasha AI');
   console.log('='.repeat(80));
   
-  const signature = req.headers['x-webhook-signature'];
   const payload = req.body; // Теперь это строка благодаря express.text()
-  const secret = process.env.WEBHOOK_SECRET;
   
   console.log('📋 [WEBHOOK] Заголовки запроса:');
-  console.log('   X-Webhook-Signature:', signature ? '✓ присутствует' : '✗ отсутствует');
   console.log('   Content-Type:', req.headers['content-type']);
   console.log('   Content-Length:', req.headers['content-length']);
   
-  // Проверка наличия необходимых данных
-  if (!signature) {
-    console.error('❌ [WEBHOOK] Отсутствует заголовок X-Webhook-Signature');
-    return res.status(401).send('Отсутствует заголовок X-Webhook-Signature');
-  }
-  
-  if (!secret) {
-    console.error('❌ [WEBHOOK] WEBHOOK_SECRET не настроен');
-    return res.status(500).send('WEBHOOK_SECRET не настроен');
-  }
-  
+  // Проверка наличия тела запроса
   if (!payload) {
     console.error('❌ [WEBHOOK] Тело запроса пустое');
     return res.status(400).send('Тело запроса пустое');
   }
   
   console.log('📦 [WEBHOOK] Размер payload:', payload.length, 'символов');
-  console.log('🔐 [WEBHOOK] Проверка подписи...');
 
   try {
     const data = JSON.parse(payload);
